@@ -1,24 +1,21 @@
 const { Telegraf } = require('telegraf');
-const OpenAI = require('openai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const express = require('express');
 
 // 1. Web Server (Keep-Alive for Render)
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Priyanshu System (Gemini Engine) Online 🟢'));
+app.get('/', (req, res) => res.send('Priyanshu System (Native Gemini) Online 🟢'));
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-// 2. Setup Google Gemini (Using OpenAI Protocol)
-// This connects to Google's servers instead of NVIDIA's
-const client = new OpenAI({
-  apiKey: process.env.API_KEY, 
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/"
-});
+// 2. Setup Google Gemini (Native)
+const genAI = new GoogleGenerativeAI(process.env.API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // 3. Setup Telegram Bot
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-console.log("🚀 System Starting (Engine: Gemini Flash)...");
+console.log("🚀 System Starting (Native Engine)...");
 
 // Handle Text
 bot.on('text', async (ctx) => {
@@ -28,16 +25,12 @@ bot.on('text', async (ctx) => {
   try {
     ctx.sendChatAction('typing');
     
-    // Switch to Gemini 2.0 Flash (The Fastest Model)
-    const completion = await client.chat.completions.create({
-      model: "gemini-2.0-flash", 
-      messages: [{ role: "user", content: userMsg }],
-      max_tokens: 4096
-    });
+    // Generate Content using Native Google API
+    const result = await model.generateContent(userMsg);
+    const response = await result.response;
+    const text = response.text();
 
-    if (completion.choices && completion.choices[0]) {
-      await ctx.reply(completion.choices[0].message.content);
-    }
+    await ctx.reply(text);
   } catch (err) {
     console.error("AI Error:", err);
     await ctx.reply("⚠️ System Error: " + err.message);
@@ -52,31 +45,33 @@ bot.on('photo', async (ctx) => {
   try {
     const photo = ctx.message.photo.pop();
     const fileLink = await ctx.telegram.getFileLink(photo.file_id);
-    const question = ctx.message.caption || "Describe this image.";
+    
+    // Fetch the image data
+    const response = await fetch(fileLink.href);
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    const completion = await client.chat.completions.create({
-      model: "gemini-2.0-flash",
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: question },
-            { type: "image_url", image_url: { url: fileLink.href } }
-          ]
-        }
-      ],
-      max_tokens: 4096
-    });
+    // Prepare image for Gemini
+    const imagePart = {
+      inlineData: {
+        data: buffer.toString("base64"),
+        mimeType: "image/jpeg",
+      },
+    };
 
-    await ctx.reply(completion.choices[0].message.content);
+    const prompt = ctx.message.caption || "Describe this image in detail.";
+    const result = await model.generateContent([prompt, imagePart]);
+    const aiResponse = await result.response;
+    
+    await ctx.reply(aiResponse.text());
   } catch (err) {
     console.error("Vision Error:", err);
     await ctx.reply("⚠️ Vision Error: " + err.message);
   }
 });
 
-// 4. Launch
-bot.launch().then(() => {
+// 4. Launch with Anti-Conflict Mode
+bot.launch({ dropPendingUpdates: true }).then(() => {
   console.log("✅ Priyanshu System Connected!");
 }).catch((err) => {
   console.error("❌ Connection Failed:", err);
