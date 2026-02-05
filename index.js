@@ -10,8 +10,7 @@ app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // 2. Setup Google Gemini (Native)
 const genAI = new GoogleGenerativeAI(process.env.API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 // 3. Setup Telegram Bot
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
